@@ -67,8 +67,13 @@ class TrainLoop:
         weight_decay=0.0,
         lr_anneal_steps=0,
         use_drug_structure=False,
-        comb_num=1
+        comb_num=1,
+        enable_profiling=False,
+        profile_dir='./profiling_logs'
     ):
+        import sys
+        print(f"{__file__}:{sys._getframe().f_lineno}")
+        print(f'model:{model}, diffusion:{diffusion}, data:{data}, batch_size:{batch_size}, microbatch:{microbatch}, lr:{lr}, ema_rate:{ema_rate}, log_interval:{log_interval}, save_interval:{save_interval}, resume_checkpoint:{resume_checkpoint}, use_fp16:{use_fp16}, fp16_scale_growth:{fp16_scale_growth}, schedule_sampler:{schedule_sampler}, weight_decay:{weight_decay}, lr_anneal_steps:{lr_anneal_steps}, use_drug_structure:{use_drug_structure}, comb_num:{comb_num}')
         
         self.model = model
         self.diffusion = diffusion
@@ -90,6 +95,11 @@ class TrainLoop:
         self.schedule_sampler = schedule_sampler or UniformSampler(diffusion)
         self.weight_decay = weight_decay
         self.lr_anneal_steps = lr_anneal_steps
+        
+        self.enable_profiling = enable_profiling
+        self.profile_dir = profile_dir
+        self.hook_dict = {}
+        self.hooks = None
 
         self.step = 0
         self.resume_step = 0
@@ -132,11 +142,11 @@ class TrainLoop:
             #)
             self.ddp_model = self.model
         else:
-            if dist.get_world_size() > 1:
-                logger.warn(
-                    "Distributed training requires CUDA. "
-                    "Gradients will not be synchronized properly!"
-                )
+            # if dist.get_world_size() > 1:
+            #     logger.warn(
+            #         "Distributed training requires CUDA. "
+            #         "Gradients will not be synchronized properly!"
+            #     )
             self.use_ddp = False
             self.ddp_model = self.model
             
@@ -147,7 +157,7 @@ class TrainLoop:
 
         if resume_checkpoint:
             self.resume_step = parse_resume_step_from_filename(resume_checkpoint)
-            if dist.get_rank() == 0:
+            if not dist.is_available() or not dist.is_initialized() or dist.get_rank() == 0:
                 logger.log(f"loading model from checkpoint: {resume_checkpoint}...")
                 self.model.load_state_dict(
                     dist_util.load_state_dict(
@@ -163,7 +173,7 @@ class TrainLoop:
         main_checkpoint = find_resume_checkpoint() or self.resume_checkpoint
         ema_checkpoint = find_ema_checkpoint(main_checkpoint, self.resume_step, rate)
         if ema_checkpoint:
-            if dist.get_rank() == 0:
+            if not dist.is_available() or not dist.is_initialized() or dist.get_rank() == 0:
                 logger.log(f"loading EMA from checkpoint: {ema_checkpoint}...")
                 state_dict = dist_util.load_state_dict(
                     ema_checkpoint, map_location=dist_util.dev()
@@ -186,16 +196,70 @@ class TrainLoop:
             self.opt.load_state_dict(state_dict)
 
     def run_loop(self):
+        # Setup profiling if enabled
+        if self.enable_profiling:
+            import json
+            from torch.profiler import profile, ProfilerActivity
+            import sys
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from profile_utils import register_hooks
+            
+            os.makedirs(self.profile_dir, exist_ok=True)
+            self.hooks = register_hooks(self.model, self.hook_dict)
+            logger.log(f"Profiling enabled: output to {self.profile_dir}")
+        
+        profiler = None
+        if self.enable_profiling and self.step == 0:
+            profiler = profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA] if th.cuda.is_available() else [ProfilerActivity.CPU],
+                record_shapes=True,
+                profile_memory=True,
+                with_stack=True
+            )
+            profiler.__enter__()
+        
         while (
             not self.lr_anneal_steps
             or self.step + self.resume_step < self.lr_anneal_steps
         ):
+            # import sys
+            # print(f"{__file__}:{sys._getframe().f_lineno}")
+            # print(f'self.step: {self.step}, self.resume_step: {self.resume_step}, self.lr_anneal_steps: {self.lr_anneal_steps}')
            
             
             batch = next(iter(self.data))
 
             self.run_step(batch)
             
+            # Save profiling results after a few steps
+            if self.enable_profiling and profiler is not None and self.step >= 3:
+                profiler.__exit__(None, None, None)
+                
+                # Save Chrome trace
+                trace_file = os.path.join(self.profile_dir, "trace.json")
+                profiler.export_chrome_trace(trace_file)
+                logger.log(f"Profiling trace saved to: {trace_file}")
+                
+                # Save hook information
+                if self.hook_dict:
+                    import json
+                    hooks_file = os.path.join(self.profile_dir, "layer_shapes.json")
+                    with open(hooks_file, 'w') as f:
+                        json.dump(self.hook_dict, f, indent=2)
+                    logger.log(f"Layer shapes saved to: {hooks_file}")
+                
+                # Remove hooks
+                if self.hooks:
+                    for hook in self.hooks:
+                        hook.remove()
+                
+                profiler = None
+                logger.log("Profiling completed")
+            
+            # Show progress every 10 steps
+            if self.step % self.log_interval == 0:
+                progress = (self.step + self.resume_step) / self.lr_anneal_steps * 100
+                logger.log(f"Progress: step {self.step + self.resume_step}/{int(self.lr_anneal_steps)} ({progress:.1f}%), loss: {self.loss_list[-1]:.4f}")
             
             if self.step % self.log_interval == 0:
                 logger.dumpkvs()

@@ -117,6 +117,10 @@ class GaussianDiffusion:
         rescale_timesteps=False,
         use_encoder=False,
     ):
+        import sys
+        print(f"{__file__}:{sys._getframe().f_lineno}")
+        print(f'betas shape:{betas.shape}, model_mean_type:{model_mean_type}, model_var_type:{model_var_type}, loss_type:{loss_type}, rescale_timesteps:{rescale_timesteps}, use_encoder:{use_encoder}')
+
         self.use_encoder = use_encoder
         self.model_mean_type = model_mean_type
         self.model_var_type = model_var_type

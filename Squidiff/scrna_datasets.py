@@ -70,17 +70,103 @@ class AnnDataDataset(Dataset):
             
     
 
-def prepared_data(data_dir=None,control_data_dir=None, batch_size=64,use_drug_structure=False,comb_num=1):
-     
+def create_mock_adata(num_cells=1000, num_genes=100, num_groups=3, use_drug_structure=False):
+    """
+    Create mock AnnData object for testing.
     
-    train_adata = sc.read_h5ad(data_dir)
+    Parameters:
+    -----------
+    num_cells : int
+        Number of cells (samples)
+    num_genes : int
+        Number of genes (features)
+    num_groups : int
+        Number of different groups/cell types
+    use_drug_structure : bool
+        Whether to include drug structure information
+    
+    Returns:
+    --------
+    adata : AnnData
+        Mock AnnData object
+    """
+    import anndata
+    
+    np.random.seed(42)
+    
+    X = np.random.randn(num_cells, num_genes).astype(np.float32)
+    X = np.maximum(X, 0)
+    
+    adata = anndata.AnnData(X)
+    
+    adata.obs['Group'] = np.random.randint(1, num_groups + 1, size=num_cells)
+    
     if use_drug_structure:
-        control_adata = sc.read_h5ad(control_data_dir)
-    else:
-        control_adata = None
+        mock_smiles = [
+            'CC(C)Cc1ccc(cc1)C(C)C(O)=O',
+            'CC(=O)Oc1ccccc1C(=O)O',
+            'CN1C=NC2=C1C(=O)N(C(=O)N2C)C',
+        ]
+        adata.obs['SMILES'] = np.random.choice(mock_smiles, size=num_cells)
+        adata.obs['dose'] = np.random.uniform(0.1, 10.0, size=num_cells)
     
-    _data_dataset = AnnDataDataset(train_adata,control_adata,use_drug_structure,comb_num)
+    return adata
 
+
+def prepared_data(data_dir=None, control_data_dir=None, batch_size=64, 
+                  use_drug_structure=False, comb_num=1, use_mock_data=False,
+                  mock_num_cells=1000, mock_num_genes=100):
+    """
+    Prepare data loader for training.
+    
+    Parameters:
+    -----------
+    data_dir : str
+        Path to h5ad file
+    control_data_dir : str
+        Path to control h5ad file (for drug structure mode)
+    batch_size : int
+        Batch size for DataLoader
+    use_drug_structure : bool
+        Whether to use drug structure information
+    comb_num : int
+        Number of drug combinations
+    use_mock_data : bool
+        If True, use mock data instead of loading from file
+    mock_num_cells : int
+        Number of cells in mock data
+    mock_num_genes : int
+        Number of genes in mock data
+    
+    Returns:
+    --------
+    dataloader : DataLoader
+        PyTorch DataLoader object
+    """
+    
+    if use_mock_data:
+        print(f"Using mock data: {mock_num_cells} cells, {mock_num_genes} genes")
+        train_adata = create_mock_adata(
+            num_cells=mock_num_cells,
+            num_genes=mock_num_genes,
+            use_drug_structure=use_drug_structure
+        )
+        if use_drug_structure:
+            control_adata = create_mock_adata(
+                num_cells=mock_num_cells,
+                num_genes=mock_num_genes,
+                use_drug_structure=False
+            )
+        else:
+            control_adata = None
+    else:
+        train_adata = sc.read_h5ad(data_dir)
+        if use_drug_structure:
+            control_adata = sc.read_h5ad(control_data_dir)
+        else:
+            control_adata = None
+    
+    _data_dataset = AnnDataDataset(train_adata, control_adata, use_drug_structure, comb_num)
 
     dataloader = DataLoader(
                 _data_dataset, 

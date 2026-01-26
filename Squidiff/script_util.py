@@ -135,6 +135,9 @@ def create_model(
     drug_dimension = 1024,
     comb_num=1,
 ):
+    import sys
+    print(f"{__file__}:{sys._getframe().f_lineno}")
+    print(f'gene_size:{gene_size}, output_dim:{output_dim}, num_layers:{num_layers}, use_checkpoint:{use_checkpoint}, use_fp16:{use_fp16}, use_scale_shift_norm:{use_scale_shift_norm}, dropout:{dropout}, use_encoder:{use_encoder}, use_drug_structure:{use_drug_structure}, drug_dimension:{drug_dimension}, comb_num:{comb_num}')
 
     return MLPModel(
         gene_size  = gene_size,
@@ -327,6 +330,10 @@ def create_gaussian_diffusion(
     timestep_respacing="",
     use_encoder = False
 ):
+    import sys
+    print(f"{__file__}:{sys._getframe().f_lineno}")
+    print(f'steps:{steps}, learn_sigma:{learn_sigma}, sigma_small:{sigma_small}, noise_schedule:{noise_schedule}, use_kl:{use_kl}, predict_xstart:{predict_xstart}, rescale_timesteps:{rescale_timesteps}, rescale_learned_sigmas:{rescale_learned_sigmas}, timestep_respacing:{timestep_respacing}, use_encoder:{use_encoder}')
+
     print('diffusion num of steps = ',steps)
     betas = diffusion.get_named_beta_schedule(noise_schedule, steps)
     if use_kl:

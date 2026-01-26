@@ -100,6 +100,10 @@ class MLPModel(nn.Module):
                  comb_num=1,
                  
                 ):
+        import sys
+        print(f"{__file__}:{sys._getframe().f_lineno}")
+        print(f'gene_size:{gene_size}, output_dim:{output_dim}, num_layers:{num_layers}, hidden_sizes:{hidden_sizes}, time_pos_dim:{time_pos_dim}, num_classes:{num_classes}, latent_dim:{latent_dim}, use_checkpoint:{use_checkpoint}, use_fp16:{use_fp16}, use_scale_shift_norm:{use_scale_shift_norm}, dropout:{dropout}, time_embed_dim:{time_embed_dim}, use_encoder:{use_encoder}, use_drug_structure:{use_drug_structure}, drug_dimension:{drug_dimension}, comb_num:{comb_num}')
+
         super().__init__()
         
         self.use_encoder = use_encoder

@@ -70,6 +70,18 @@ class SpacedDiffusion(GaussianDiffusion):
     """
 
     def __init__(self, use_timesteps, **kwargs):
+        import sys
+        print(f"{__file__}:{sys._getframe().f_lineno}")
+        print(f'len(use_timesteps):{len(use_timesteps)}')
+        
+        # Print kwargs with special handling for betas
+        print('kwargs:')
+        for key, value in kwargs.items():
+            if key == 'betas':
+                print(f'  {key}: shape={np.array(value).shape}')
+            else:
+                print(f'  {key}={value}')
+
         self.use_timesteps = set(use_timesteps)
         self.timestep_map = []
         self.original_num_steps = len(kwargs["betas"])

@@ -66,7 +66,10 @@ def run_training(args):
         control_data_dir = args['control_data_path'],
         batch_size = args['batch_size'],
         use_drug_structure= args['use_drug_structure'],
-        comb_num = args['comb_num']
+        comb_num = args['comb_num'],
+        use_mock_data = args.get('use_mock_data', False),
+        mock_num_cells = args.get('mock_num_cells', 1000),
+        mock_num_genes = args.get('mock_num_genes', args['gene_size'])
     )
     #logger.log(f'with gpu {dist_util.dev()}')
     start_time = datetime.now()
@@ -89,6 +92,8 @@ def run_training(args):
         lr_anneal_steps=args['lr_anneal_steps'],
         use_drug_structure= args['use_drug_structure'],
         comb_num=args['comb_num'],
+        enable_profiling=args.get('enable_profiling', False),
+        profile_dir=args.get('profile_dir', './profiling_logs'),
     )
     train_.run_loop()
     
@@ -102,6 +107,8 @@ def run_training(args):
 
 
 def parse_args():
+    import sys
+    print(f"{__file__}:{sys._getframe().f_lineno}")
     """Parse command-line arguments and update with default values."""
     # Define default arguments
     default_args = {}
@@ -131,6 +138,11 @@ def parse_args():
         'use_drug_structure':False,
         'comb_num':1,
         'use_ddim':True,
+        'use_mock_data':False,
+        'mock_num_cells':1000,
+        'mock_num_genes':100,
+        'enable_profiling':False,
+        'profile_dir':'./profiling_logs',
     }
     default_args.update(updated_args)
     # Initialize argument parser
@@ -138,6 +150,7 @@ def parse_args():
     
     # Add arguments to the parser (these should correspond to the keys in default_args)
     for key, value in default_args.items():
+        # print(f'key:{key}, value:{value}, type:{type(value)}')
         parser.add_argument(f'--{key}', default=value, type=type(value), help=f'{key} (default: {value})')
 
     # Parse command-line arguments
@@ -151,11 +164,15 @@ def parse_args():
         logger.log('ERROR:Please specify the logger path --logger_path.')
         raise ValueError("Logger path is required. Please specify the logger path.")
 
-            # Check if 'logger_path' is None and raise an error if so
-    if updated_args['data_path']=='':
-        logger.log("ERROR:Please specify the data path --data_path.")
-        raise ValueError("Dataset path is required. Please specify the path where the training adata is.")
+    # Check if 'data_path' is None and raise an error if so (unless using mock data)
+    if updated_args['data_path']=='' and not updated_args['use_mock_data']:
+        logger.log("ERROR:Please specify the data path --data_path or use --use_mock_data True.")
+        raise ValueError("Dataset path is required. Please specify the path where the training adata is, or use mock data.")
 
+    # import sys
+    # print(f"{__file__}:{sys._getframe().f_lineno}")
+    # for key, value in updated_args.items():
+    #     print(f'key:{key}, value:{value}, type:{type(value)}')
 
     # Return the updated arguments as a dictionary
     return updated_args
@@ -163,6 +180,9 @@ def parse_args():
 
 
 if __name__ == "__main__":
+    import sys
+    print(f"{__file__}:{sys._getframe().f_lineno}")
+
     args_train = parse_args()
     print('**************training args*************')
     print(args_train)
