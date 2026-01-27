@@ -10,7 +10,7 @@ import os
 
 def register_hooks(model, hook_dict):
     """Register forward hooks to capture layer inputs/outputs."""
-    def make_hook(name):
+    def make_hook(name, module_type):
         def hook(module, input, output):
             if isinstance(input, tuple):
                 input_shapes = [tuple(x.shape) if hasattr(x, 'shape') else str(type(x)) for x in input]
@@ -27,6 +27,7 @@ def register_hooks(model, hook_dict):
                 output_dtypes = [str(output.dtype) if hasattr(output, 'dtype') else str(type(output))]
             
             hook_dict[name] = {
+                'op_type': module_type,
                 'input_shapes': input_shapes,
                 'input_dtypes': input_dtypes,
                 'output_shapes': output_shapes,
@@ -37,7 +38,8 @@ def register_hooks(model, hook_dict):
     hooks = []
     for name, module in model.named_modules():
         if len(list(module.children())) == 0:  # Only leaf modules
-            hook = module.register_forward_hook(make_hook(name))
+            module_type = type(module).__module__ + '.' + type(module).__qualname__
+            hook = module.register_forward_hook(make_hook(name, module_type))
             hooks.append(hook)
     return hooks
 
@@ -51,10 +53,17 @@ def analyze_layer_shapes(json_file):
     with open(json_file, 'r') as f:
         data = json.load(f)
     
-    print(f"{'Layer Name':<50} {'Input Shape':<30} {'Output Shape':<30}")
-    print("-" * 110)
+    print(f"{'Layer Name':<50} {'Op Type':<35} {'Input Shape':<30} {'Output Shape':<30}")
+    print("-" * 145)
     
     for name, info in data.items():
+        op_type = info.get('op_type', 'N/A')
+        # Simplify op_type display by showing just the class name
+        if '.' in op_type:
+            op_type_short = op_type.split('.')[-1]
+        else:
+            op_type_short = op_type
+        
         input_shapes = info.get('input_shapes', [])
         output_shapes = info.get('output_shapes', [])
         input_dtypes = info.get('input_dtypes', [])
@@ -63,10 +72,10 @@ def analyze_layer_shapes(json_file):
         input_str = str(input_shapes[0]) if input_shapes else "N/A"
         output_str = str(output_shapes[0]) if output_shapes else "N/A"
         
-        print(f"{name:<50} {input_str:<30} {output_str:<30}")
+        print(f"{name:<50} {op_type_short:<35} {input_str:<30} {output_str:<30}")
         
         if len(input_dtypes) > 0 and input_dtypes[0] != str(type(None)):
-            print(f"{'':>50} dtype: {input_dtypes[0]:<23} dtype: {output_dtypes[0] if output_dtypes else 'N/A'}")
+            print(f"{'':>50} {'':>35} dtype: {input_dtypes[0]:<23} dtype: {output_dtypes[0] if output_dtypes else 'N/A'}")
 
 
 def analyze_chrome_trace(json_file):
