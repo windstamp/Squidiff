@@ -56,6 +56,10 @@ def run_training(args):
     model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys())
     )
+
+    import sys
+    print(f"{__file__}:{sys._getframe().f_lineno}")
+    print(model)
     
     model.to(dist_util.dev())
     schedule_sampler = create_named_schedule_sampler(args['schedule_sampler'], diffusion)
